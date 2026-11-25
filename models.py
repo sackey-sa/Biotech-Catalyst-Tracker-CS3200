@@ -1,127 +1,150 @@
-""" File that defines all the tables we will use in our project"""
+"""Defines every table in the Biotech Catalyst Tracker database (schema blueprint only)."""
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
-from datetime import datetime,date
-from sqlalchemy import ForeignKey,String
-from sqlalchemy import DateTime,DECIMAL,BigInteger,Date,CheckConstraint
-from sqlalchemy.orm import DeclarativeBase,Mapped,mapped_column
-from database import engine
 
+from sqlalchemy import (BigInteger, CheckConstraint, DECIMAL, Date, DateTime,
+                        ForeignKey, String)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    "Base class for tables, i'll explain what it does below"
+    """Parent class for all tables; collects their metadata for create_all."""
 
 
 class Companies(Base):
-    "Represents each company we plan on modeling biotech and financial data for "
+    """One row per public company. Ticker lives in securities, not here."""
     __tablename__ = "companies"
-    company_id : Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(250),unique = True)
-    ticker : Mapped[str] = mapped_column(String(30))
-    cik : Mapped[str] = mapped_column(String(10), unique=True)
+    company_id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(250), unique=True)
+    cik: Mapped[str] = mapped_column(String(10), unique=True)
+
 
 class CompanyAliases(Base):
-    "Gives each table an alias to avoid duplicate names"
+    """Maps each source's spelling of a company name to one company_id."""
     __tablename__ = "company_aliases"
-    alias_id : Mapped[int] = mapped_column(primary_key=True)
-    alias_name : Mapped[str] = mapped_column(String(250),unique= True)
+    alias_id: Mapped[int] = mapped_column(primary_key=True)
+    alias_name: Mapped[str] = mapped_column(String(250), unique=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
     source: Mapped[str] = mapped_column(String(50))
 
+
 class Securities(Base):
-    "Table is meant to represent other tradable objects outside of companies"
+    """Anything with a price: company stocks plus benchmarks like XBI (company_id NULL)."""
     __tablename__ = "securities"
-    security_id : Mapped[int] = mapped_column(primary_key=True)
-    ticker : Mapped[str] = mapped_column(String(50),unique=True)
-    company_id : Mapped[int] = mapped_column(ForeignKey("companies.company_id"),
-                                             unique=True,nullable=True)
-    type : Mapped[str] = mapped_column(String(30))
+    security_id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(50), unique=True)
+    company_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("companies.company_id"), unique=True)
+    type: Mapped[str] = mapped_column(String(30))
+
 
 class Prices(Base):
-    "Table represent the prices that securities are sold at "
+    """One row per security per trading day."""
     __tablename__ = "prices"
-    security_id : Mapped[int] = mapped_column(ForeignKey("securities.security_id"),
-                                              primary_key=True)
-    trade_date : Mapped[date] = mapped_column(Date,primary_key=True)
-    close : Mapped[float] = mapped_column(DECIMAL(12,4))
-    adjusted_close : Mapped[float] = mapped_column(DECIMAL(12,4))
+    security_id: Mapped[int] = mapped_column(
+        ForeignKey("securities.security_id"), primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    close: Mapped[Decimal] = mapped_column(DECIMAL(12, 4))
+    adjusted_close: Mapped[Decimal] = mapped_column(DECIMAL(12, 4))
     volume: Mapped[int] = mapped_column(BigInteger)
 
+
 class Drugs(Base):
-    "Table represents the drugs that are produces"
-    __tablename__ ="drugs"
-    drug_id : Mapped[int] = mapped_column(primary_key=True)
-    brand_name : Mapped[str] = mapped_column(String(100))
-    active_ingredient : Mapped[str] = mapped_column(String(100))
+    """One row per drug product."""
+    __tablename__ = "drugs"
+    drug_id: Mapped[int] = mapped_column(primary_key=True)
+    brand_name: Mapped[str] = mapped_column(String(100))
+    active_ingredient: Mapped[str] = mapped_column(String(100))
 
 
 class Conditions(Base):
-    "The conditions that are related to the drugs in the database"
+    """Diseases studied in trials; names are unique so loaders can reuse rows."""
     __tablename__ = "conditions"
-    condition_id : Mapped[int] = mapped_column(primary_key=True,unique=True)
-    condition_name : Mapped[str] = mapped_column(String(100))
+    condition_id: Mapped[int] = mapped_column(primary_key=True)
+    condition_name: Mapped[str] = mapped_column(String(100), unique=True)
 
 
 class Trials(Base):
-    " The clinical trials being held and their current states"
+    """One row per clinical trial from ClinicalTrials.gov."""
     __tablename__ = "trials"
-    nct_number :Mapped[str] = mapped_column(String(40),primary_key=True, unique=True)
-    company_id :Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
-    phase : Mapped[Optional[str]] = mapped_column(String(50))
-    status : Mapped[str] = mapped_column(String(40))
-    start_date : Mapped[Optional[date]] = mapped_column(Date)
-    completion_date : Mapped[Optional[date]] = mapped_column(Date)
+    nct_number: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
+    phase: Mapped[Optional[str]] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(40))
+    enrollment: Mapped[Optional[int]]
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    completion_date: Mapped[Optional[date]] = mapped_column(Date)
+
 
 class TrialConditions(Base):
-    "IDEK"
+    """Join table: a trial studies many conditions; a condition appears in many trials."""
     __tablename__ = "trial_conditions"
-    nct_number : Mapped[str] = mapped_column(String(40),
-                                             ForeignKey("trials.nct_number"),primary_key=True)
-    condition_id : Mapped[int] = mapped_column(ForeignKey
-                                               ("conditions.condition_id"),primary_key=True)
+    nct_number: Mapped[str] = mapped_column(
+        String(40), ForeignKey("trials.nct_number"), primary_key=True)
+    condition_id: Mapped[int] = mapped_column(
+        ForeignKey("conditions.condition_id"), primary_key=True)
+
 
 class TrialDrugs(Base):
-    "Join table representing the many to many relationship between trials and drugs"
+    """Join table: a trial tests many drugs; a drug appears in many trials."""
     __tablename__ = "trial_drugs"
-    nct_number : Mapped[str] = mapped_column(String(40),
-                                                 ForeignKey("trials.nct_number"),primary_key=True)
-    drug_id : Mapped[int] = mapped_column(ForeignKey("drugs.drug_id"))
+    nct_number: Mapped[str] = mapped_column(
+        String(40), ForeignKey("trials.nct_number"), primary_key=True)
+    drug_id: Mapped[int] = mapped_column(
+        ForeignKey("drugs.drug_id"), primary_key=True)
+
 
 class FdaActions(Base):
-    "FDA actions and announcements, very important table"
+    """One row per original FDA application (no supplements) from openFDA."""
     __tablename__ = "fda_actions"
-    fda_action_id : Mapped[int] = mapped_column(primary_key=True)
-    application_number : Mapped[str] = mapped_column(String(50),unique=True)
-    company_id : Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
-    drug_id : Mapped[int] = mapped_column(ForeignKey("drugs.drug_id"))
-    submission_type : Mapped[str] = mapped_column(String(50))
-    status : Mapped[str] = mapped_column(String(50))
-    action_date : Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    fda_action_id: Mapped[int] = mapped_column(primary_key=True)
+    application_number: Mapped[str] = mapped_column(String(50), unique=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
+    drug_id: Mapped[int] = mapped_column(ForeignKey("drugs.drug_id"))
+    submission_type: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(50))
+    action_date: Mapped[date] = mapped_column(Date)
+
 
 class Filings(Base):
-    " New filings from companies to fda? "
+    """One row per SEC filing (mainly 8-Ks) from EDGAR."""
     __tablename__ = "filings"
-    accession_number : Mapped[str] = mapped_column(String(50),primary_key=True)
-    company_id : Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
-    form_type : Mapped[str] = mapped_column(String(50))
-    filing_date : Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    acceptance_timestamp : Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    accession_number: Mapped[str] = mapped_column(String(50), primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
+    form_type: Mapped[str] = mapped_column(String(50))
+    filing_date: Mapped[date] = mapped_column(Date)
+    acceptance_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime)  # UTC
+
 
 class Events(Base):
-    "Financial events, buys sells etc etc "
+    """Derived table: one row per trial readout or FDA decision being analyzed.
+
+    Links to at most one source row. Events with no API source (e.g. a rejection
+    found only in a press release) must have a source_url instead.
+    """
     __tablename__ = "events"
-    __table_args__ = (CheckConstraint(
-        "(nct_number IS NOT NULL) + (fda_action_id IS NOT NULL) + (accession_number IS NOT NULL) = 1",
-        name="one_source_only"),)
-    event_id :Mapped[int] = mapped_column(primary_key=True)
-    company_id : Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
+    __table_args__ = (
+        CheckConstraint(
+            "(nct_number IS NOT NULL) + (fda_action_id IS NOT NULL)"
+            " + (accession_number IS NOT NULL) <= 1",
+            name="at_most_one_source"),
+        CheckConstraint(
+            "nct_number IS NOT NULL OR fda_action_id IS NOT NULL"
+            " OR accession_number IS NOT NULL OR source_url IS NOT NULL",
+            name="source_or_url"),
+    )
+    event_id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
     event_type: Mapped[str] = mapped_column(String(50))
-    event_timestamp: Mapped[datetime] = mapped_column(DateTime)
-    trading_day : Mapped[date] = mapped_column(Date)
-    nct_number : Mapped[Optional[str]] = mapped_column(String(40),ForeignKey("trials.nct_number"))
-    fda_action_id : Mapped[Optional[int]] = mapped_column(ForeignKey(
-        "fda_actions.fda_action_id"))
-    accession_number : Mapped[Optional[str]] = mapped_column(String(50),ForeignKey("filings.accession_number"))
-    source_url : Mapped[Optional[str]] = mapped_column(String(500))
-
-
+    event_timestamp: Mapped[datetime] = mapped_column(DateTime)  # UTC
+    trading_day: Mapped[date] = mapped_column(Date)
+    # Keep these three FKs without ON DELETE rules: MySQL rejects CHECKs on
+    # columns whose FK has SET NULL or CASCADE.
+    nct_number: Mapped[Optional[str]] = mapped_column(
+        String(40), ForeignKey("trials.nct_number"))
+    fda_action_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("fda_actions.fda_action_id"))
+    accession_number: Mapped[Optional[str]] = mapped_column(
+        String(50), ForeignKey("filings.accession_number"))
+    source_url: Mapped[Optional[str]] = mapped_column(String(500))
