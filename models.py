@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (BigInteger, CheckConstraint, DECIMAL, Date, DateTime,
-                        ForeignKey, String)
+                        ForeignKey, String, UniqueConstraint)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -123,6 +123,7 @@ class Events(Base):
     Subject (what it's about): at most one of nct_number or fda_action_id.
     Evidence (where it came from): accession_number and/or source_url.
     An openFDA action counts as its own evidence.
+    event_type and outcome are limited to fixed values, and duplicates are blocked.
     """
     __tablename__ = "events"
     __table_args__ = (
@@ -133,6 +134,15 @@ class Events(Base):
             "accession_number IS NOT NULL OR source_url IS NOT NULL"
             " OR fda_action_id IS NOT NULL",
             name="has_evidence"),
+        CheckConstraint(
+            "event_type IN ('fda_decision', 'trial_readout')",
+            name="valid_event_type"),
+        CheckConstraint(
+            "outcome IN ('approved', 'rejected', 'positive', 'negative', 'mixed')",
+            name="valid_outcome"),
+        UniqueConstraint("company_id", "event_type", "event_timestamp",
+                         name="no_duplicate_events"),
+        UniqueConstraint("fda_action_id", name="one_event_per_fda_action"),
     )
     event_id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
