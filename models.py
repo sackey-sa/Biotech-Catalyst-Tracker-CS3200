@@ -54,15 +54,15 @@ class Drugs(Base):
     """One row per drug product."""
     __tablename__ = "drugs"
     drug_id: Mapped[int] = mapped_column(primary_key=True)
-    brand_name: Mapped[str] = mapped_column(String(100))
-    active_ingredient: Mapped[str] = mapped_column(String(100))
+    brand_name: Mapped[Optional[str]] = mapped_column(String(255))  # trial drugs often have none
+    active_ingredient: Mapped[str] = mapped_column(String(255))
 
 
 class Conditions(Base):
     """Diseases studied in trials; names are unique so loaders can reuse rows."""
     __tablename__ = "conditions"
     condition_id: Mapped[int] = mapped_column(primary_key=True)
-    condition_name: Mapped[str] = mapped_column(String(100), unique=True)
+    condition_name: Mapped[str] = mapped_column(String(255), unique=True)
 
 
 class Trials(Base):
@@ -120,23 +120,24 @@ class Filings(Base):
 class Events(Base):
     """Derived table: one row per trial readout or FDA decision being analyzed.
 
-    Links to at most one source row. Events with no API source (e.g. a rejection
-    found only in a press release) must have a source_url instead.
+    Subject (what it's about): at most one of nct_number or fda_action_id.
+    Evidence (where it came from): accession_number and/or source_url.
+    An openFDA action counts as its own evidence.
     """
     __tablename__ = "events"
     __table_args__ = (
         CheckConstraint(
-            "(nct_number IS NOT NULL) + (fda_action_id IS NOT NULL)"
-            " + (accession_number IS NOT NULL) <= 1",
-            name="at_most_one_source"),
+            "(nct_number IS NOT NULL) + (fda_action_id IS NOT NULL) <= 1",
+            name="at_most_one_subject"),
         CheckConstraint(
-            "nct_number IS NOT NULL OR fda_action_id IS NOT NULL"
-            " OR accession_number IS NOT NULL OR source_url IS NOT NULL",
-            name="source_or_url"),
+            "accession_number IS NOT NULL OR source_url IS NOT NULL"
+            " OR fda_action_id IS NOT NULL",
+            name="has_evidence"),
     )
     event_id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.company_id"))
-    event_type: Mapped[str] = mapped_column(String(50))
+    event_type: Mapped[str] = mapped_column(String(50))  # fda_decision or trial_readout
+    outcome: Mapped[str] = mapped_column(String(30))  # approved, rejected, positive, negative, mixed
     event_timestamp: Mapped[datetime] = mapped_column(DateTime)  # UTC
     trading_day: Mapped[date] = mapped_column(Date)
     # Keep these three FKs without ON DELETE rules: MySQL rejects CHECKs on
