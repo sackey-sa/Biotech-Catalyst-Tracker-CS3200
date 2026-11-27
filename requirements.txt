@@ -15,3 +15,6 @@ sql==2022.4.0
 SQLAlchemy==2.1.8
 typing_extensions==4.16.0
 urllib3==1.25.11
+cryptography==50.0.2
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
