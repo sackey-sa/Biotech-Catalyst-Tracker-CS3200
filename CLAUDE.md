@@ -17,10 +17,6 @@ XBI is a biotech sector fund, used as the benchmark.
 - Scope: about 20 small and mid-size public biotechs. FDA approvals first,
   then trial readouts and rejections from press releases. Keep data
   pulls small.
-- Ownership: Sam (ClinicalTrials.gov, openFDA loaders), Eftyghia (prices,
-  press-release events), Aaron (events builder, EDGAR loader), Shaan and
-  Rayn (frontend), Abdullah (company list, calculations, queries).
-  Don't rewrite another person's loader without asking.
 - Graded queries must have joins and/or subqueries, a plain-English
   question, and tests in sql/04_tests.sql.
 
