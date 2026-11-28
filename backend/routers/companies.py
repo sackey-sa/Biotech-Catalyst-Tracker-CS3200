@@ -17,7 +17,7 @@ def list_companies(db: Session = Depends(get_db)) -> list[dict]:
                (SELECT COUNT(*) FROM trials t WHERE t.company_id = c.company_id)       AS trials,
                (SELECT COUNT(*) FROM fda_actions f WHERE f.company_id = c.company_id)  AS fda_actions,
                (SELECT COUNT(*) FROM events e WHERE e.company_id = c.company_id)       AS events,
-               (SELECT AVG(r.abnormal_return_1d) FROM event_returns r
+               (SELECT AVG(r.abnormal_return) FROM event_returns r
                  WHERE r.company_id = c.company_id)                                     AS avg_abnormal_1d,
                (SELECT p.adjusted_close FROM prices p WHERE p.security_id = s.security_id
                  ORDER BY p.trade_date DESC LIMIT 1)                                    AS last_close

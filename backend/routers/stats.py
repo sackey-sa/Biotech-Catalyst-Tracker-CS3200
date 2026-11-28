@@ -16,13 +16,15 @@ def get_stats(db: Session = Depends(get_db)) -> dict:
     counts = one(db, "SELECT " + ", ".join(f"(SELECT COUNT(*) FROM {t}) AS {t}" for t in TABLES))
     demo = one(db, "SELECT COUNT(*) AS n FROM companies WHERE cik LIKE '999999%'")["n"] > 0
     by_outcome = rows(db, """
-        SELECT event_type, outcome,
-               COUNT(*)                AS events,
-               AVG(abnormal_return_1d) AS avg_abnormal_1d,
-               AVG(abnormal_return_5d) AS avg_abnormal_5d
-        FROM event_returns
-        GROUP BY event_type, outcome
-        ORDER BY event_type, avg_abnormal_1d DESC""")
+        SELECT e.event_type, e.outcome,
+               COUNT(*)                  AS events,
+               AVG(r.abnormal_return)    AS avg_abnormal_1d,
+               AVG(w.abnormal_return_5d) AS avg_abnormal_5d
+        FROM events e
+        LEFT JOIN event_returns r ON r.event_id = e.event_id
+        LEFT JOIN event_windows w ON w.event_id = e.event_id
+        GROUP BY e.event_type, e.outcome
+        ORDER BY e.event_type, avg_abnormal_1d DESC""")
     recent = rows(db, EVENT_LIST_SQL + " ORDER BY e.event_timestamp DESC LIMIT 6")
     price_range = one(db, "SELECT MIN(trade_date) AS first, MAX(trade_date) AS last FROM prices")
     return {"counts": counts, "demo_data": demo, "by_outcome": by_outcome,

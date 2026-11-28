@@ -16,19 +16,22 @@ EVENT_LIST_SQL = """
            c.company_id, c.name AS company_name, c.cik, s.ticker,
            t.phase,
            COALESCE(d.brand_name, d.active_ingredient) AS fda_drug,
-           r.stock_return_1d, r.xbi_return_1d, r.abnormal_return_1d,
-           r.stock_return_5d, r.abnormal_return_5d
+           r.stock_return    AS stock_return_1d,
+           r.xbi_return      AS xbi_return_1d,
+           r.abnormal_return AS abnormal_return_1d,
+           w.stock_return_5d, w.abnormal_return_5d
     FROM events e
     JOIN companies c          ON c.company_id = e.company_id
     LEFT JOIN securities s    ON s.company_id = c.company_id
     LEFT JOIN trials t        ON t.nct_number = e.nct_number
     LEFT JOIN fda_actions fa  ON fa.fda_action_id = e.fda_action_id
     LEFT JOIN drugs d         ON d.drug_id = fa.drug_id
-    LEFT JOIN event_returns r ON r.event_id = e.event_id
+    LEFT JOIN event_returns r ON r.event_id = e.event_id   -- team view (sql/02_calculations.sql)
+    LEFT JOIN event_windows w ON w.event_id = e.event_id   -- backend view (backend/sql/views.sql)
 """
 
-SORTS = {"date": "e.event_timestamp", "abnormal_1d": "r.abnormal_return_1d",
-         "abnormal_5d": "r.abnormal_return_5d", "company": "c.name"}
+SORTS = {"date": "e.event_timestamp", "abnormal_1d": "r.abnormal_return",
+         "abnormal_5d": "w.abnormal_return_5d", "company": "c.name"}
 
 
 @router.get("/events")
