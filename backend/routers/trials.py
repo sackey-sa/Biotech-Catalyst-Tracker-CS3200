@@ -23,8 +23,16 @@ def list_trials(phase: str | None = None, status: str | None = None, condition_i
                      "AND x.condition_id = :condition_id)")
         params["condition_id"] = condition_id
     if q:
-        where.append("(t.nct_number LIKE :q OR c.name LIKE :q OR co.condition_name LIKE :q "
-                     "OR d.active_ingredient LIKE :q OR d.brand_name LIKE :q)")
+        # EXISTS only decides which trials match; the conditions and drugs columns
+        # below still list every condition and drug of a matching trial.
+        where.append("""(t.nct_number LIKE :q OR c.name LIKE :q
+            OR EXISTS (SELECT 1 FROM trial_conditions xc
+                       JOIN conditions xco ON xco.condition_id = xc.condition_id
+                       WHERE xc.nct_number = t.nct_number AND xco.condition_name LIKE :q)
+            OR EXISTS (SELECT 1 FROM trial_drugs xd
+                       JOIN drugs xdr ON xdr.drug_id = xd.drug_id
+                       WHERE xd.nct_number = t.nct_number
+                         AND (xdr.active_ingredient LIKE :q OR xdr.brand_name LIKE :q)))""")
         params["q"] = f"%{q}%"
     return rows(db, f"""
         SELECT t.nct_number, t.phase, t.status, t.enrollment, t.start_date, t.completion_date,
