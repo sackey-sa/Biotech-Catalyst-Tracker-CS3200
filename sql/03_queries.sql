@@ -352,16 +352,39 @@ ORDER BY abnormal_5d_pct DESC;
 -- question: For events backed by an SEC filing, how many hours passed between the news and the filing's acceptance, and did after-hours news get filed more slowly?
 -- graded: no
 --
--- After-hours = news at or after 20:00 UTC (4pm New York, standard time), which trades the next day.
+-- After-hours = news at or after 4pm New York time, which trades the
+-- next day. Timestamps are UTC, so the derived table converts them:
+-- New York is UTC-4 during daylight saving time and UTC-5 otherwise
+-- (4pm = 20:00 UTC in summer, 21:00 UTC in winter). US daylight saving
+-- runs from the second Sunday of March at 07:00 UTC to the first Sunday
+-- of November at 06:00 UTC. Worked out here because MySQL often has no
+-- time zone tables, so CONVERT_TZ(..., 'America/New_York') returns NULL.
 -- -------------------------------------------------------------
 SELECT e.event_type,
-       CASE WHEN TIME(e.event_timestamp) >= '20:00:00' THEN 'after close' ELSE 'before/during market' END AS news_timing,
+       CASE WHEN TIME(ny.ny_time) >= '16:00:00' THEN 'after close' ELSE 'before/during market' END AS news_timing,
        COUNT(*)                                                                   AS events,
        ROUND(AVG(TIMESTAMPDIFF(MINUTE, e.event_timestamp, f.acceptance_timestamp)) / 60, 1) AS avg_hours_to_filing,
        ROUND(MAX(TIMESTAMPDIFF(MINUTE, e.event_timestamp, f.acceptance_timestamp)) / 60, 1) AS slowest_hours,
-       SUM(f.filing_date > DATE(e.event_timestamp))                               AS filed_next_day_or_later
+       SUM(f.filing_date > DATE(ny.ny_time))                                      AS filed_next_day_or_later
 FROM events e
 JOIN filings f ON f.accession_number = e.accession_number
+JOIN (
+  SELECT d.event_id,
+         d.ts - INTERVAL IF(d.ts >= d.dst_start AND d.ts < d.dst_end, 4, 5) HOUR AS ny_time
+  FROM (
+    SELECT y.event_id,
+           y.ts,
+           TIMESTAMP(y.mar1 + INTERVAL ((8 - DAYOFWEEK(y.mar1)) % 7 + 7) DAY, '07:00:00') AS dst_start,
+           TIMESTAMP(y.nov1 + INTERVAL ((8 - DAYOFWEEK(y.nov1)) % 7) DAY, '06:00:00')     AS dst_end
+    FROM (
+      SELECT event_id,
+             event_timestamp                                         AS ts,
+             MAKEDATE(YEAR(event_timestamp), 1) + INTERVAL 2 MONTH   AS mar1,
+             MAKEDATE(YEAR(event_timestamp), 1) + INTERVAL 10 MONTH  AS nov1
+      FROM events
+    ) AS y
+  ) AS d
+) AS ny ON ny.event_id = e.event_id
 WHERE f.acceptance_timestamp IS NOT NULL
 GROUP BY e.event_type, news_timing
 ORDER BY e.event_type, news_timing;
