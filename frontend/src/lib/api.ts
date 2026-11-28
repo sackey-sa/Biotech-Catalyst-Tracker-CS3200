@@ -154,6 +154,8 @@ export interface TrialFacets {
 
 export interface ShowcaseQuery {
   slug: string
+  number: number // "-- QUERY N" in sql/03_queries.sql
+  graded: boolean // "-- graded: yes"
   file: string
   title: string
   question: string

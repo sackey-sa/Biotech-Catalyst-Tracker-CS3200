@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Button, Card, ErrorBox, Loading, PageHeader, Table, Td, Th } from '../components/ui'
+import { Badge, Button, Card, Empty, ErrorBox, Loading, PageHeader, Table, Td, Th } from '../components/ui'
 import { api, type QueryResult, type ShowcaseQuery } from '../lib/api'
 
 function formatCell(v: string | number | null): string {
@@ -9,7 +9,7 @@ function formatCell(v: string | number | null): string {
   return v
 }
 
-function QueryCard({ index, query, autoRun }: { index: number; query: ShowcaseQuery; autoRun: number }) {
+function QueryCard({ query, autoRun }: { query: ShowcaseQuery; autoRun: number }) {
   const [showSql, setShowSql] = useState(true)
   const [lastAutoRun, setLastAutoRun] = useState(0)
   const run = useMutation<QueryResult, Error>({ mutationFn: () => api.runQuery(query.slug) })
@@ -22,8 +22,14 @@ function QueryCard({ index, query, autoRun }: { index: number; query: ShowcaseQu
 
   return (
     <Card
-      title={<span className="flex items-baseline gap-2"><span className="tabular text-muted">Q{index}</span>{query.title}</span>}
-      subtitle={<span className="font-mono">backend/queries/{query.file}</span>}
+      title={
+        <span className="flex items-baseline gap-2">
+          <span className="tabular text-muted">Q{query.number}</span>
+          {query.title}
+          {query.graded && <Badge tone="accent">Graded</Badge>}
+        </span>
+      }
+      subtitle={<span className="font-mono">{query.file} · Query {query.number}</span>}
       actions={
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setShowSql((s) => !s)}>{showSql ? 'Hide SQL' : 'Show SQL'}</Button>
@@ -67,6 +73,21 @@ function QueryCard({ index, query, autoRun }: { index: number; query: ShowcaseQu
   )
 }
 
+function QuerySection({ title, subtitle, queries, autoRun }: {
+  title: string; subtitle: string; queries: ShowcaseQuery[]; autoRun: number
+}) {
+  if (queries.length === 0) return null
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-ink">{title}</h2>
+        <p className="text-sm text-muted">{subtitle}</p>
+      </div>
+      {queries.map((q) => <QueryCard key={q.slug} query={q} autoRun={autoRun} />)}
+    </section>
+  )
+}
+
 export default function Queries() {
   const { data, error, isPending } = useQuery({ queryKey: ['queries'], queryFn: api.queries })
   const [runAll, setRunAll] = useState(0)
@@ -75,12 +96,17 @@ export default function Queries() {
     <>
       <PageHeader
         title="SQL showcase"
-        subtitle="The queries behind the analysis, each with the question it answers. Run any of them live against the MySQL database. Each one is a .sql file in backend/queries, the same files used for the queries-and-output PDF."
-        actions={<Button onClick={() => setRunAll((n) => n + 1)} disabled={!data}>Run all queries</Button>}
+        subtitle="The queries behind the analysis, each with the question it answers. Run any of them live against the MySQL database. They all come from sql/03_queries.sql, the same file used for the queries-and-output PDF."
+        actions={<Button onClick={() => setRunAll((n) => n + 1)} disabled={!data?.length}>Run all queries</Button>}
       />
-      {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : (
-        <div className="space-y-6">
-          {data.map((q, i) => <QueryCard key={q.slug} index={i + 1} query={q} autoRun={runAll} />)}
+      {isPending ? <Loading /> : error ? <ErrorBox error={error} /> : data.length === 0 ? (
+        <Empty>No queries found in sql/03_queries.sql.</Empty>
+      ) : (
+        <div className="space-y-10">
+          <QuerySection title="Graded queries" subtitle="These go in the queries-and-output PDF."
+            queries={data.filter((q) => q.graded)} autoRun={runAll} />
+          <QuerySection title="Other queries" subtitle="Extra analysis, not part of the graded set."
+            queries={data.filter((q) => !q.graded)} autoRun={runAll} />
         </div>
       )}
     </>
