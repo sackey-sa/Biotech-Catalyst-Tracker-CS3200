@@ -39,8 +39,8 @@ def list_trials(phase: str | None = None, status: str | None = None, condition_i
                c.company_id, c.name AS company_name, s.ticker,
                GROUP_CONCAT(DISTINCT co.condition_name ORDER BY co.condition_name SEPARATOR '; ') AS conditions,
                GROUP_CONCAT(DISTINCT COALESCE(d.brand_name, d.active_ingredient) SEPARATOR '; ') AS drugs,
-               MAX(e.event_id) AS readout_event_id,
-               MAX(e.outcome)  AS readout_outcome
+               lr.event_id AS readout_event_id,
+               lr.outcome  AS readout_outcome
         FROM trials t
         JOIN companies c              ON c.company_id = t.company_id
         LEFT JOIN securities s        ON s.company_id = c.company_id
@@ -48,9 +48,16 @@ def list_trials(phase: str | None = None, status: str | None = None, condition_i
         LEFT JOIN conditions co       ON co.condition_id = tc.condition_id
         LEFT JOIN trial_drugs td      ON td.nct_number = t.nct_number
         LEFT JOIN drugs d             ON d.drug_id = td.drug_id
-        LEFT JOIN events e            ON e.nct_number = t.nct_number
+        -- Latest readout per trial, so its event_id and outcome come from the same event.
+        LEFT JOIN (
+            SELECT nct_number, event_id, outcome,
+                   ROW_NUMBER() OVER (PARTITION BY nct_number
+                                      ORDER BY event_timestamp DESC, event_id DESC) AS rn
+            FROM events
+            WHERE nct_number IS NOT NULL AND event_type = 'trial_readout'
+        ) lr                          ON lr.nct_number = t.nct_number AND lr.rn = 1
         {"WHERE " + " AND ".join(where) if where else ""}
-        GROUP BY t.nct_number, c.company_id, s.ticker
+        GROUP BY t.nct_number, c.company_id, s.ticker, lr.event_id, lr.outcome
         ORDER BY t.start_date DESC""", **params)
 
 
