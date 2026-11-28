@@ -284,7 +284,9 @@ ORDER BY avg_size_of_move_pct DESC;
 -- graded: no
 --
 -- Events with a missing price are skipped: MySQL sorts NULL first,
--- so they would otherwise top the list.
+-- so they would otherwise top the list. Conditions and drugs are
+-- LEFT JOINs, so a trial with none recorded still appears (with an
+-- empty cell) instead of dropping out.
 -- -------------------------------------------------------------
 SELECT c.name                                                   AS company,
        s.ticker,
@@ -299,10 +301,10 @@ FROM events e
 JOIN companies c              ON c.company_id = e.company_id
 JOIN securities s             ON s.company_id = c.company_id
 JOIN trials t                 ON t.nct_number = e.nct_number
-JOIN trial_conditions tc      ON tc.nct_number = t.nct_number
-JOIN conditions co            ON co.condition_id = tc.condition_id
-JOIN trial_drugs td           ON td.nct_number = t.nct_number
-JOIN drugs d                  ON d.drug_id = td.drug_id
+LEFT JOIN trial_conditions tc ON tc.nct_number = t.nct_number
+LEFT JOIN conditions co       ON co.condition_id = tc.condition_id
+LEFT JOIN trial_drugs td      ON td.nct_number = t.nct_number
+LEFT JOIN drugs d             ON d.drug_id = td.drug_id
 JOIN event_returns r          ON r.event_id = e.event_id
 WHERE e.outcome IN ('negative', 'mixed')
   AND r.abnormal_return IS NOT NULL
