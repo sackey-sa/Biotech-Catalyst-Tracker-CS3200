@@ -130,4 +130,4 @@ CALL compute_abnormal_returns(NULL);
 --   5      Gamma Pharma       trial_readout  negative   -8.20   -0.98    -7.22    ok
 --   4      Gamma Pharma       fda_decision   approved    0.99   -0.98     1.97    ok
 --   6      Gamma Pharma       fda_decision   approved    0.39    0.49    -0.10    ok
---   3      Acme Bio           trial_readout  positive   NULL     NULL     NULL    missing price
+--   3      Acme Bio           trial_readout  positive   NULL     0.49     NULL    missing price
