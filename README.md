@@ -19,7 +19,6 @@ biotech index's move, from the close before the news.
 | `backend/seed_demo.py` | Fills the database with **fictional** demo data until the real loaders exist |
 | `frontend/` | React + TypeScript app (Vite, React Router, TanStack Query, Recharts, Tailwind) |
 | `docs/eer.png`, `docs/presentation.pdf` | EER diagram and presentation |
-| `CLAUDE.md` | Team rules, conventions and how we work |
 
 ## Requirements
 
