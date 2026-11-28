@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+  <!-- Starts the backend and frontend together; each gets its own tab in the Run window. -->
+  <configuration default="false" name="Full stack" type="CompoundRunConfigurationType">
+    <toRun name="Backend (FastAPI)" type="PythonConfigurationType" />
+    <toRun name="Frontend (Vite)" type="ShConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>

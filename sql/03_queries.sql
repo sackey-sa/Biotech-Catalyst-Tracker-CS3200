@@ -1,8 +1,17 @@
 -- =============================================================
 -- 03_queries.sql
--- The six questions our database answers.
+-- Every question our database answers.
 -- Run after 02_calculations.sql. Most queries build on the
 -- event_returns view; Query 1 shows the full price math by hand.
+-- Queries 7-12 also use the backend-only event_windows view
+-- (5-day returns), created by:  python -m backend.setup_views
+--
+-- Each query starts with the same header:
+--   -- QUERY N
+--   -- title: Short name
+--   -- question: The question in plain English
+--   -- graded: yes | no
+-- Only "graded: yes" queries go in the queries PDF.
 --
 -- "Abnormal return" = the stock's move minus XBI's move that day:
 -- the part of the move caused by the company's own news.
@@ -15,7 +24,9 @@ USE biotech_catalyst;
 
 -- -------------------------------------------------------------
 -- QUERY 1
--- Which FDA approvals produced the largest abnormal returns?
+-- title: Biggest reactions to FDA approvals
+-- question: Which FDA approvals produced the largest abnormal returns?
+-- graded: yes
 --
 -- Calculates every daily return from prices with LAG (today's
 -- price vs. the previous trading day's), then joins those returns
@@ -59,7 +70,9 @@ ORDER BY abnormal_pct DESC;
 
 -- -------------------------------------------------------------
 -- QUERY 2
--- Does bad news move stocks more than good news?
+-- title: Good news vs. bad news
+-- question: Does bad news move stocks more than good news?
+-- graded: yes
 --
 -- Groups events into good news (approved, positive results) and
 -- bad news (rejected, negative results), then compares them.
@@ -86,7 +99,9 @@ ORDER BY avg_move_size_pct DESC;
 
 -- -------------------------------------------------------------
 -- QUERY 3
--- Do companies with fewer drugs swing harder?
+-- title: Fewer drugs, bigger swings?
+-- question: Do companies with fewer drugs swing harder?
+-- graded: yes
 --
 -- A subquery counts each company's drugs (through its trials),
 -- then compares that to how big its stock moves were.
@@ -117,7 +132,9 @@ ORDER BY drug_counts.drugs, avg_move_size_pct DESC;
 
 -- -------------------------------------------------------------
 -- QUERY 4
--- How do stock moves differ by trial phase?
+-- title: Stock moves by trial phase
+-- question: How do stock moves differ by trial phase?
+-- graded: yes
 --
 -- Trial results link to their trial directly. FDA approvals reach
 -- their trial through the drug: events -> fda_actions -> drugs ->
@@ -151,8 +168,9 @@ ORDER BY phase;
 
 -- -------------------------------------------------------------
 -- QUERY 5
--- Which companies have the most Phase 3 trials, and how big were
--- their stock moves?
+-- title: Phase 3 leaders and their moves
+-- question: Which companies have the most Phase 3 trials, and how big were their stock moves?
+-- graded: yes
 --
 -- A subquery counts each company's Phase 3 trials; a second
 -- subquery finds its average move size.
@@ -182,7 +200,9 @@ ORDER BY phase3.phase3_trials DESC, c.name;
 
 -- -------------------------------------------------------------
 -- QUERY 6
--- Which events moved more than twice the sector's average daily move?
+-- title: Moves beyond twice the sector
+-- question: Which events moved more than twice the sector's average daily move?
+-- graded: yes
 --
 -- A subquery finds XBI's average daily move size; events whose
 -- abnormal return is more than twice that are unusually large.
@@ -209,3 +229,190 @@ ORDER BY ABS(er.abnormal_return) DESC;
 --          2  Beta Therapeutics  rejected  2024-03-12         -44.02           2.00
 --          1  Acme Bio           approved  2024-03-11           9.98           2.00
 --          5  Gamma Pharma       negative  2024-03-14          -7.22           2.00
+
+
+-- -------------------------------------------------------------
+-- QUERY 7
+-- title: Market reaction by catalyst type and outcome
+-- question: For each kind of catalyst (FDA decision or trial readout) and each outcome, how many events were there, and how much did the stock beat or trail the XBI biotech index on the day and over the following week?
+-- graded: no
+--
+-- 1-day returns come from event_returns; 5-day returns from the
+-- backend's event_windows view. Events with a missing price are
+-- counted but left out of the averages.
+-- -------------------------------------------------------------
+SELECT r.event_type,
+       r.outcome,
+       COUNT(*)                                  AS events,
+       ROUND(AVG(r.stock_return) * 100, 2)       AS avg_stock_move_1d_pct,
+       ROUND(AVG(r.abnormal_return) * 100, 2)    AS avg_abnormal_1d_pct,
+       ROUND(AVG(w.abnormal_return_5d) * 100, 2) AS avg_abnormal_5d_pct,
+       ROUND(MIN(r.abnormal_return) * 100, 2)    AS worst_1d_pct,
+       ROUND(MAX(r.abnormal_return) * 100, 2)    AS best_1d_pct
+FROM event_returns r
+LEFT JOIN event_windows w ON w.event_id = r.event_id
+GROUP BY r.event_type, r.outcome
+ORDER BY r.event_type, avg_abnormal_1d_pct DESC;
+
+
+-- -------------------------------------------------------------
+-- QUERY 8
+-- title: Do later-stage trials move stocks more?
+-- question: For trial readouts, how big is the typical stock reaction (in either direction) at each clinical phase, and what share of readouts were positive?
+-- graded: no
+--
+-- Absolute abnormal return measures how much news there was,
+-- regardless of direction.
+-- -------------------------------------------------------------
+SELECT t.phase,
+       COUNT(*)                                               AS readouts,
+       ROUND(AVG(ABS(r.abnormal_return)) * 100, 2)            AS avg_size_of_move_pct,
+       ROUND(100 * SUM(e.outcome = 'positive') / COUNT(*), 1) AS pct_positive,
+       ROUND(AVG(t.enrollment))                               AS avg_enrollment
+FROM events e
+JOIN trials t         ON t.nct_number = e.nct_number
+JOIN event_returns r  ON r.event_id = e.event_id
+WHERE e.event_type = 'trial_readout'
+GROUP BY t.phase
+ORDER BY avg_size_of_move_pct DESC;
+
+
+-- -------------------------------------------------------------
+-- QUERY 9
+-- title: Biggest drops after failed trials
+-- question: Which negative or mixed trial readouts caused the largest one-day drops relative to XBI, and what disease and drug were being tested?
+-- graded: no
+--
+-- Events with a missing price are skipped: MySQL sorts NULL first,
+-- so they would otherwise top the list. Conditions and drugs are
+-- LEFT JOINs, so a trial with none recorded still appears (with an
+-- empty cell) instead of dropping out.
+-- -------------------------------------------------------------
+SELECT c.name                                                   AS company,
+       s.ticker,
+       e.trading_day,
+       t.nct_number,
+       t.phase,
+       GROUP_CONCAT(DISTINCT co.condition_name SEPARATOR '; ')  AS conditions,
+       GROUP_CONCAT(DISTINCT d.active_ingredient SEPARATOR '; ') AS drugs,
+       e.outcome,
+       ROUND(r.abnormal_return * 100, 2)                        AS abnormal_1d_pct
+FROM events e
+JOIN companies c              ON c.company_id = e.company_id
+JOIN securities s             ON s.company_id = c.company_id
+JOIN trials t                 ON t.nct_number = e.nct_number
+LEFT JOIN trial_conditions tc ON tc.nct_number = t.nct_number
+LEFT JOIN conditions co       ON co.condition_id = tc.condition_id
+LEFT JOIN trial_drugs td      ON td.nct_number = t.nct_number
+LEFT JOIN drugs d             ON d.drug_id = td.drug_id
+JOIN event_returns r          ON r.event_id = e.event_id
+WHERE e.outcome IN ('negative', 'mixed')
+  AND r.abnormal_return IS NOT NULL
+GROUP BY e.event_id, c.name, s.ticker, e.trading_day, t.nct_number, t.phase, e.outcome, r.abnormal_return
+ORDER BY r.abnormal_return
+LIMIT 10;
+
+
+-- -------------------------------------------------------------
+-- QUERY 10
+-- title: FDA approvals vs. remaining pipeline
+-- question: For each FDA approval, how did the stock do against XBI over the following week, and how many other trials did the company still have running at the time?
+-- graded: no
+--
+-- The correlated subquery counts trials that started before the
+-- decision and had not completed by then. 5-day returns come from
+-- the backend's event_windows view.
+-- -------------------------------------------------------------
+SELECT c.name                                       AS company,
+       s.ticker,
+       COALESCE(d.brand_name, d.active_ingredient)  AS drug,
+       fa.application_number,
+       fa.action_date,
+       ROUND(r.abnormal_return * 100, 2)            AS abnormal_1d_pct,
+       ROUND(w.abnormal_return_5d * 100, 2)         AS abnormal_5d_pct,
+       (SELECT COUNT(*)
+          FROM trials t
+         WHERE t.company_id = c.company_id
+           AND t.start_date <= fa.action_date
+           AND (t.completion_date IS NULL OR t.completion_date > fa.action_date)) AS trials_running_at_decision
+FROM fda_actions fa
+JOIN events e             ON e.fda_action_id = fa.fda_action_id
+JOIN companies c          ON c.company_id = fa.company_id
+JOIN securities s         ON s.company_id = c.company_id
+JOIN drugs d              ON d.drug_id = fa.drug_id
+JOIN event_returns r      ON r.event_id = e.event_id
+LEFT JOIN event_windows w ON w.event_id = e.event_id
+WHERE e.outcome = 'approved'
+ORDER BY abnormal_5d_pct DESC;
+
+
+-- -------------------------------------------------------------
+-- QUERY 11
+-- title: How fast does news reach the SEC?
+-- question: For events backed by an SEC filing, how many hours passed between the news and the filing's acceptance, and did after-hours news get filed more slowly?
+-- graded: no
+--
+-- After-hours = news at or after 4pm New York time, which trades the
+-- next day. Timestamps are UTC, so the derived table converts them:
+-- New York is UTC-4 during daylight saving time and UTC-5 otherwise
+-- (4pm = 20:00 UTC in summer, 21:00 UTC in winter). US daylight saving
+-- runs from the second Sunday of March at 07:00 UTC to the first Sunday
+-- of November at 06:00 UTC. Worked out here because MySQL often has no
+-- time zone tables, so CONVERT_TZ(..., 'America/New_York') returns NULL.
+-- -------------------------------------------------------------
+SELECT e.event_type,
+       CASE WHEN TIME(ny.ny_time) >= '16:00:00' THEN 'after close' ELSE 'before/during market' END AS news_timing,
+       COUNT(*)                                                                   AS events,
+       ROUND(AVG(TIMESTAMPDIFF(MINUTE, e.event_timestamp, f.acceptance_timestamp)) / 60, 1) AS avg_hours_to_filing,
+       ROUND(MAX(TIMESTAMPDIFF(MINUTE, e.event_timestamp, f.acceptance_timestamp)) / 60, 1) AS slowest_hours,
+       SUM(f.filing_date > DATE(ny.ny_time))                                      AS filed_next_day_or_later
+FROM events e
+JOIN filings f ON f.accession_number = e.accession_number
+JOIN (
+  SELECT d.event_id,
+         d.ts - INTERVAL IF(d.ts >= d.dst_start AND d.ts < d.dst_end, 4, 5) HOUR AS ny_time
+  FROM (
+    SELECT y.event_id,
+           y.ts,
+           TIMESTAMP(y.mar1 + INTERVAL ((8 - DAYOFWEEK(y.mar1)) % 7 + 7) DAY, '07:00:00') AS dst_start,
+           TIMESTAMP(y.nov1 + INTERVAL ((8 - DAYOFWEEK(y.nov1)) % 7) DAY, '06:00:00')     AS dst_end
+    FROM (
+      SELECT event_id,
+             event_timestamp                                         AS ts,
+             MAKEDATE(YEAR(event_timestamp), 1) + INTERVAL 2 MONTH   AS mar1,
+             MAKEDATE(YEAR(event_timestamp), 1) + INTERVAL 10 MONTH  AS nov1
+      FROM events
+    ) AS y
+  ) AS d
+) AS ny ON ny.event_id = e.event_id
+WHERE f.acceptance_timestamp IS NOT NULL
+GROUP BY e.event_type, news_timing
+ORDER BY e.event_type, news_timing;
+
+
+-- -------------------------------------------------------------
+-- QUERY 12
+-- title: Disease areas scorecard
+-- question: For each disease area, how many trials and companies are working on it, how many readouts have there been, and what was the average market reaction to those readouts?
+-- graded: no
+--
+-- Uses a derived table of readouts per trial, so trials without a
+-- readout still count toward the totals.
+-- -------------------------------------------------------------
+SELECT co.condition_name,
+       COUNT(DISTINCT t.nct_number)                AS trials,
+       COUNT(DISTINCT t.company_id)                AS companies,
+       COUNT(rd.event_id)                          AS readouts,
+       SUM(rd.outcome = 'positive')                AS positive_readouts,
+       ROUND(AVG(rd.abnormal_return) * 100, 2)     AS avg_readout_abnormal_1d_pct
+FROM conditions co
+JOIN trial_conditions tc ON tc.condition_id = co.condition_id
+JOIN trials t            ON t.nct_number = tc.nct_number
+LEFT JOIN (
+    SELECT e.event_id, e.nct_number, e.outcome, r.abnormal_return
+    FROM events e
+    JOIN event_returns r ON r.event_id = e.event_id
+    WHERE e.event_type = 'trial_readout'
+) rd ON rd.nct_number = t.nct_number
+GROUP BY co.condition_id, co.condition_name
+ORDER BY trials DESC, readouts DESC;
